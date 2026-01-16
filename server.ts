@@ -10,6 +10,7 @@ interface Item {
     damage?: number;
     heal_amount?: number;
     quantity?: number;
+    durability?: number;
 }
 
 interface Player {
@@ -64,15 +65,15 @@ app.post('/init', async (req: Request, res: Response) => {
         username: "IronTony",
         stats: { hp: 50, max_hp: 150, energy: 300 }, // HP Kritisch!
         inventory: [
-            { id: "w_1", name: "Repulsor", type: "weapon", damage: 150 },
+            { id: "w_1", name: "Repulsor", type: "weapon", damage: 150, durability: 3 },
             { id: "c_1", name: "Nano-Potion", type: "consumable", heal_amount: 50, quantity: 5 },
-            { id: "w_2", name: "Revolver", type: "weapon", damage: 70 },
+            { id: "w_2", name: "Revolver", type: "weapon", damage: 70, durability: 5 },
             { id: "c_2", name: "Elisir of the carribean", type: "consumable", heal_amount: 100 },
-            { id: "q_1", name: "Excalibur", type: "quest_item", quantity: 2 },
+            { id: "q_1", name: "Excalibur", type: "quest_item", quantity: 1 },
             { id: "q_2", type: "quest_item", name: "red_key", quantity: 50 },
             { id: "w_3", type: "weapon", name: "granate", quantity: 4 },
             { id: "q_3", name: "green_key", type: "quest_item", quantity: 7 },
-            { id: "c_3", name: "pope_marjia", type: "consumable", quantity: 10 }
+            { id: "c_3", name: "pope_marjia", type: "consumable", quantity: 10, heal_amount: -35 }
         ]
     };
 
@@ -99,7 +100,7 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
 
     const players = db.collection<Player>('players');
 
-    //search the item and return a log
+    //search the item
 
     const player = await players.findOne({ _id: playerId, "inventory.id": itemId });
     
@@ -109,34 +110,77 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
     }
 
     // if term for items to use
+    const item = player.inventory.find(i => i.id === itemId);
+    if (!item) return;
+    //const itemToUse = player.inventory.find(i => i.id === itemId);
 
-    const itemToUse = player.inventory.find(i => i.id === itemId);
-    if (!itemToUse || itemToUse.type !== 'consumable' || !itemToUse.heal_amount) {
+    /* if (!itemToUse || itemToUse.type !== 'consumable' || !itemToUse.heal_amount) {
         res.status(400).json({ error: "Dieses Item kann nicht konsumiert werden." });
         return;
-    }
+    } */
+    if (item.type === 'weapon') {
+        if (item.quantity || item.durability <=0) {
+            res.status(400).json({error: "Knapp daneben ist auch vorbei! Munition aufgebraucht"});
+            return;
+        }
 
-    //if term, by quantity 0
-    if (itemToUse.quantity && itemToUse.quantity <= 0) {
-        res.status(400).json({ error: "Item aufgebraucht!" });
+        const damage = item.damage || 10; // 10 for weapon without definition
+
+        await players.updateOne(
+            { _id: playerId, "inventory.id": itemId },
+        {
+            $inc: {
+                "inventory.$.quantity": -1,
+                "inventory.$.durability": -1
+            }
+        }
+    );
+        res.json({
+            message: "Du schiesst mit ${item.name}! Boom!",
+            action: "attack",
+            damage: damage,
+            feedback: "Dein Gegner ist getroffen! Sein Hp sinkt um ${item.damage} "             
+        });
+        return;
+    }
+        if (item.type === 'consumable')
+    //if quantity 0
+    if (item.quantity && item.quantity <= 0) {
+        res.status(400).json({ error: "kein Kuttel für die Katzen! Die Flasche ist leer..." });
         return;
     }
 
+    const heal = item.heal_amount || 0;
+    
     // update the quantity and the lifestate, after use
-    const result = await players.updateOne(
+    
+    await players.updateOne(
         { _id: playerId, "inventory.id": itemId },
         {
             $inc: { 
-                "stats.hp": itemToUse.heal_amount, // heal up
+                "stats.hp": heal,                   // heal up
                 "inventory.$.quantity": -1         // quantity down
             }
         }
     );
 
     res.json({ 
-        message: `Aaaahhh, erfrischend! :P ${itemToUse.name} benutzt!`, 
-        healed: itemToUse.heal_amount 
+        message: `Aaaahhh, erfrischend! :P ${item.name} benutzt!`, 
+        action: heal,
+        hp_restored: heal 
     });
+    return;
+
+// quest items
+if (item.type === 'quest_item') {
+    res.json({
+        message: "Du hast ${item.name} aus deinem Rücksack geholt.",
+        action: "inspect and use",
+        info: "Benutze ${item.name} weise, könnte wichtig sein."
+    });
+    return;
+}
+ 
 });
 
 startServer();
