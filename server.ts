@@ -60,12 +60,19 @@ app.post('/init', async (req: Request, res: Response) => {
 
     // Erstelle neuen Tony
     const newTony: Player = {
-        _id: "player_007",
+        _id: "Agent_46",
         username: "IronTony",
         stats: { hp: 50, max_hp: 150, energy: 300 }, // HP Kritisch!
         inventory: [
             { id: "w_1", name: "Repulsor", type: "weapon", damage: 150 },
-            { id: "c_1", name: "Nano-Potion", type: "consumable", heal_amount: 50, quantity: 5 }
+            { id: "c_1", name: "Nano-Potion", type: "consumable", heal_amount: 50, quantity: 5 },
+            { id: "w_2", name: "Revolver", type: "weapon", damage: 70 },
+            { id: "c_2", name: "Elisir of the carribean", type: "consumable", heal_amount: 100 },
+            { id: "q_1", name: "Excalibur", type: "quest_item", quantity: 2 },
+            { id: "q_2", type: "quest_item", name: "red_key", quantity: 50 },
+            { id: "w_3", type: "weapon", name: "granate", quantity: 4 },
+            { id: "q_3", name: "green_key", type: "quest_item", quantity: 7 },
+            { id: "c_3", name: "pope_marjia", type: "consumable", quantity: 10 }
         ]
     };
 
@@ -73,27 +80,27 @@ app.post('/init', async (req: Request, res: Response) => {
     res.json({ message: "Spielwelt zurückgesetzt. Tony ist bereit.", player: newTony });
 });
 
-// B. SPIELER LADEN (GET)
-// Zeigt den aktuellen Status
+// game loading
+
 app.get('/player/:id', async (req: Request, res: Response) => {
     const player = await db.collection<Player>('players').findOne({ _id: req.params.id });
     if (!player) {
-        res.status(404).json({ error: "Spieler nicht gefunden" });
+        res.status(404).json({ error: "Spieler nicht gefunden" });             // if wrong player
         return;
     }
     res.json(player);
 });
 
-// C. ITEM BENUTZEN (POST)
-// Die Magie: Atomares Update
+// post to use a item trough API-request 
+
 app.post('/player/:id/use', async (req: Request, res: Response) => {
     const playerId = req.params.id;
-    const { itemId } = req.body; // Wir erwarten { "itemId": "c_1" }
+    const { itemId } = req.body;                                          // in raw .json post item id to search, call a item from the Tony-bag  
 
     const players = db.collection<Player>('players');
 
-    // 1. Suche das Item, um zu wissen, wie viel es heilt
-    // (In einer echten App würden wir das aus einer Item-Datenbank holen, hier aus dem Inventar)
+    //search the item and return a log
+
     const player = await players.findOne({ _id: playerId, "inventory.id": itemId });
     
     if (!player) {
@@ -101,31 +108,33 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
         return;
     }
 
-    // Finde das spezifische Item im Array (Typescript Array Find)
+    // if term for items to use
+
     const itemToUse = player.inventory.find(i => i.id === itemId);
     if (!itemToUse || itemToUse.type !== 'consumable' || !itemToUse.heal_amount) {
         res.status(400).json({ error: "Dieses Item kann nicht konsumiert werden." });
         return;
     }
 
+    //if term, by quantity 0
     if (itemToUse.quantity && itemToUse.quantity <= 0) {
         res.status(400).json({ error: "Item aufgebraucht!" });
         return;
     }
 
-    // 2. Führe das Update in der DB aus
+    // update the quantity and the lifestate, after use
     const result = await players.updateOne(
         { _id: playerId, "inventory.id": itemId },
         {
             $inc: { 
-                "stats.hp": itemToUse.heal_amount, // HP erhöhen
-                "inventory.$.quantity": -1         // Anzahl verringern ($ ist der Index des Items)
+                "stats.hp": itemToUse.heal_amount, // heal up
+                "inventory.$.quantity": -1         // quantity down
             }
         }
     );
 
     res.json({ 
-        message: `Gluck gluck... ${itemToUse.name} benutzt!`, 
+        message: `Aaaahhh, erfrischend! :P ${itemToUse.name} benutzt!`, 
         healed: itemToUse.heal_amount 
     });
 });
