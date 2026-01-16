@@ -119,7 +119,7 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
         return;
     } */
     if (item.type === 'weapon') {
-        if (item.quantity || item.durability <=0) {
+        if (item.quantity && item.quantity || item.durability && item.durability <=0) {
             res.status(400).json({error: "Knapp daneben ist auch vorbei! Munition aufgebraucht"});
             return;
         }
@@ -143,9 +143,9 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
         });
         return;
     }
-        if (item.type === 'consumable')
-    //if quantity 0
-    if (item.quantity && item.quantity <= 0) {
+        if (item.type === 'consumable') {
+            //if quantity 0
+            if (item.quantity && item.quantity <= 0) {
         res.status(400).json({ error: "kein Kuttel für die Katzen! Die Flasche ist leer..." });
         return;
     }
@@ -170,6 +170,7 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
         hp_restored: heal 
     });
     return;
+}
 
 // quest items
 if (item.type === 'quest_item') {
@@ -180,7 +181,14 @@ if (item.type === 'quest_item') {
     });
     return;
 }
- 
-});
+//special item
+if (item.name === "pope_marjia") {
+    res.json ({
+        message: "Oh sh**! Here we go, again....Paaff! Paaff!!",
+        action: "get_stoned",
+        feedback: "Schau, dass es nicht zur Gewohneit wird! Deine Hp sinken um ${heal.amount}"
+    })
+};
 
 startServer();
+})
