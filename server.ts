@@ -1,8 +1,16 @@
 import express, { Request, Response } from 'express';
 import { MongoClient, Db } from 'mongodb'
 
-// --- 1. TYP-DEFINITIONEN (Interfaces) ---
-// Das macht TypeScript so mächtig: Wir definieren genau, wie ein Item aussieht.
+const app = express();
+app.use(express.json());
+
+const url = 'mongodb://localhost:27017';
+const client = new MongoClient(url);
+const dbName = 'rpg_demo_ts';
+let db: Db;
+
+// Define Items --> struct
+
 interface Item {
     id: string;
     name: string;
@@ -12,6 +20,8 @@ interface Item {
     quantity?: number;
     durability?: number;
 }
+
+// define player
 
 interface Player {
     _id: string;
@@ -24,23 +34,14 @@ interface Player {
     inventory: Item[];
 }
 
-// --- 2. SETUP ---
-const app = express();
-app.use(express.json()); // Erlaubt uns, JSON an den Server zu senden
 
-const url = `mongodb://localhost:27017`;
-const client = new MongoClient(url);
-const dbName = `rpg_demo_ts`;
-let db: Db;
-
-// --- 3. DATENBANK VERBINDUNG ---
-async function startServer() {
-    try {
-        await client.connect();
-        console.log("✅ Verbunden mit JARVIS Datenbank (MongoDB)");
+// start connection to MongoDB
+async function startServer() {          //async --> wait server start
+    try {                               // try or catch --> log the connection error
+        await client.connect();         //await --> wait database connection
+        console.log("Verbunden mit MongoDB Datenbank");
         db = client.db(dbName);
-        
-        // Server starten
+    
         app.listen(3000, () => {
             console.log("🚀 Server läuft auf http://localhost:3000");
         });
@@ -49,21 +50,22 @@ async function startServer() {
     }
 }
 
-// --- 4. API ENDPOINTS (Für Postman) ---
 
-// A. RESET (Für den Start der Demo)
-// Setzt den Spieler auf den Anfangszustand zurück
-app.post(`/init`, async (req: Request, res: Response) => {
-    const players = db.collection<Player>(`players`);
+// initialize demo
+
+app.post('/init', async (req: Request, res: Response) => {
+    const players = db.collection<Player>('players');
     
-    // Lösche alten Tony
-    await players.deleteOne({ _id: "Agent_46" });
+    // delete previous player to clean 
+    
+    await players.deleteOne({ _id: "fat tony" });
 
-    // Erstelle neuen Tony
+    // new player
+
     const newTony: Player = {
-        _id: "Agent_46",
-        username: "IronTony",
-        stats: { hp: 50, max_hp: 150, energy: 300 }, // HP Kritisch!
+        _id: "fat tony",
+        username: "FatTony",
+        stats: { hp: 50, max_hp: 150, energy: 300 }, 
         inventory: [
             { id: "w_1", name: "Repulsor", type: "weapon", damage: 150, durability: 3 },
             { id: "c_1", name: "Nano-Potion", type: "consumable", heal_amount: 50, quantity: 5 },
