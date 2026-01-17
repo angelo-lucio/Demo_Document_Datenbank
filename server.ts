@@ -98,14 +98,13 @@ app.get(`/player/:id`, async (req: Request, res: Response) => {
 
 app.post(`/player/:id/use`, async (req: Request, res: Response) => {
     const playerId = req.params.id;
-    const { itemId } = req.body;
-    const { itemName } = req.body;                                          // in raw .json post item id to search, call a item from the Tony-bag  
+    const { itemId } = req.body;                                       // in raw .json post item id to search, call a item from the Tony-bag  
 
     const players = db.collection<Player>(`players`);
 
     //search the item
 
-    const player = await players.findOne({ _id: playerId, "inventory.id": itemId, "inventory.name": itemName });
+    const player = await players.findOne({ _id: playerId, "inventory.id": itemId, });
     
     if (!player) {
         res.status(400).json({ error: "Item nicht im Inventar!" });
@@ -113,7 +112,7 @@ app.post(`/player/:id/use`, async (req: Request, res: Response) => {
     }
 
     // if term for items to use
-    const item = player.inventory.find(i => i.id === itemId || i.name === itemName );
+    const item = player.inventory.find(i => i.id === itemId );
     if (!item) return;
     //const itemToUse = player.inventory.find(i => i.id === itemId);
 
@@ -156,6 +155,12 @@ app.post(`/player/:id/use`, async (req: Request, res: Response) => {
             damage: damage,
             feedback: `Dein Gegner ist getroffen! Sein Hp sinkt um ${item.damage}?`             
         });
+        // delete items if no more avaiable
+        if (item.durability && item.durability <=0 || item.quantity && item.quantity <=0) {
+            await players.deleteOne(
+                { _id: playerId, "inventory.id": itemId }
+            )
+        }
         return;
     }
     if (item.type === `consumable`) {
@@ -206,4 +211,60 @@ if (item.type === "quest_item") {
     return;
 }
 })
+
+app.delete('/player/:id/delete', async (req: Request, res: Response) => {
+    const playerId = req.params.id;
+    const { itemId } = req.body;  
+
+     const players = db.collection<Player>(`players`);
+
+    const player = await players.findOne({ _id: playerId, "inventory.id": itemId, });
+    
+    if (!player) {
+        res.status(400).json({ error: "Ist bereits weg!" });
+        return;
+    }
+
+    // if term for items to use
+    const item = player.inventory.find(i => i.id === itemId );
+    if (!item) return;
+    await players.deleteOne(
+                { _id: playerId, "inventory.id": itemId }
+    )
+    res.json({
+        message: `Du hast ${item.name} weggeworfen!`,
+        action: "entsorgen",
+        info : `${item.name} ist nicht mehr verfügbar`
+    })
+}
+)
+
+app.put('/player/:id/add', async (req: Request, res: Response) => {
+    const playerId = req.params.id;
+    const { newItem } = req.body;  
+
+    const players = db.collection<Player>(`players`);
+
+    if(!newItem.id || !newItem.type || !newItem.name) {
+        res.status(400).json({error: "Daten unvollständig!"})
+        return;
+    }
+
+    const result = await players.updateOne(
+                { _id: playerId },
+                {
+                 $push: {inventory: newItem }
+                }
+            );
+            
+            if (result.matchedCount === 0) {
+                res.status(404).json({error: "Player nicht gefunden..."});
+                return;
+            }
+
+            res.json({
+                message: `${newItem.name} von Typ ${newItem.type} wird in Rücksack versorgt.`,
+                item: newItem
+            });
+        });
 startServer();
