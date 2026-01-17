@@ -6,7 +6,7 @@ import { MongoClient, Db } from 'mongodb'
 interface Item {
     id: string;
     name: string;
-    type: 'weapon' | 'consumable' | 'quest_item'; // Strict Types!
+    type: "weapon" | "consumable" | "quest_item" | "throwable"; // Strict Types!
     damage?: number;
     heal_amount?: number;
     quantity?: number;
@@ -28,9 +28,9 @@ interface Player {
 const app = express();
 app.use(express.json()); // Erlaubt uns, JSON an den Server zu senden
 
-const url = 'mongodb://localhost:27017';
+const url = `mongodb://localhost:27017`;
 const client = new MongoClient(url);
-const dbName = 'rpg_demo_ts';
+const dbName = `rpg_demo_ts`;
 let db: Db;
 
 // --- 3. DATENBANK VERBINDUNG ---
@@ -53,11 +53,11 @@ async function startServer() {
 
 // A. RESET (Für den Start der Demo)
 // Setzt den Spieler auf den Anfangszustand zurück
-app.post('/init', async (req: Request, res: Response) => {
-    const players = db.collection<Player>('players');
+app.post(`/init`, async (req: Request, res: Response) => {
+    const players = db.collection<Player>(`players`);
     
     // Lösche alten Tony
-    await players.deleteOne({ _id: "player_007" });
+    await players.deleteOne({ _id: "Agent_46" });
 
     // Erstelle neuen Tony
     const newTony: Player = {
@@ -71,7 +71,7 @@ app.post('/init', async (req: Request, res: Response) => {
             { id: "c_2", name: "Elisir of the carribean", type: "consumable", heal_amount: 100 },
             { id: "q_1", name: "Excalibur", type: "quest_item", quantity: 1 },
             { id: "q_2", type: "quest_item", name: "red_key", quantity: 50 },
-            { id: "w_3", type: "weapon", name: "granate", quantity: 4 },
+            { id: "w_3", type: "throwable", name: "granate", quantity: 4, damage: 350 },
             { id: "q_3", name: "green_key", type: "quest_item", quantity: 7 },
             { id: "c_3", name: "pope_marjia", type: "consumable", quantity: 10, heal_amount: -35 }
         ]
@@ -83,8 +83,8 @@ app.post('/init', async (req: Request, res: Response) => {
 
 // game loading
 
-app.get('/player/:id', async (req: Request, res: Response) => {
-    const player = await db.collection<Player>('players').findOne({ _id: req.params.id });
+app.get(`/player/:id`, async (req: Request, res: Response) => {
+    const player = await db.collection<Player>(`players`).findOne({ _id: req.params.id });
     if (!player) {
         res.status(404).json({ error: "Spieler nicht gefunden" });             // if wrong player
         return;
@@ -94,15 +94,16 @@ app.get('/player/:id', async (req: Request, res: Response) => {
 
 // post to use a item trough API-request 
 
-app.post('/player/:id/use', async (req: Request, res: Response) => {
+app.post(`/player/:id/use`, async (req: Request, res: Response) => {
     const playerId = req.params.id;
-    const { itemId } = req.body;                                          // in raw .json post item id to search, call a item from the Tony-bag  
+    const { itemId } = req.body;
+    const { itemName } = req.body;                                          // in raw .json post item id to search, call a item from the Tony-bag  
 
-    const players = db.collection<Player>('players');
+    const players = db.collection<Player>(`players`);
 
     //search the item
 
-    const player = await players.findOne({ _id: playerId, "inventory.id": itemId });
+    const player = await players.findOne({ _id: playerId, "inventory.id": itemId, "inventory.name": itemName });
     
     if (!player) {
         res.status(400).json({ error: "Item nicht im Inventar!" });
@@ -110,50 +111,62 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
     }
 
     // if term for items to use
-    const item = player.inventory.find(i => i.id === itemId);
+    const item = player.inventory.find(i => i.id === itemId || i.name === itemName );
     if (!item) return;
     //const itemToUse = player.inventory.find(i => i.id === itemId);
 
-    /* if (!itemToUse || itemToUse.type !== 'consumable' || !itemToUse.heal_amount) {
+    /* if (!itemToUse || itemToUse.type !== `consumable` || !itemToUse.heal_amount) {
         res.status(400).json({ error: "Dieses Item kann nicht konsumiert werden." });
         return;
     } */
-    if (item.type === 'weapon') {
-        if (item.quantity && item.quantity || item.durability && item.durability <=0) {
+    if (item.type === `weapon` || item.type === 'throwable') {
+        if (item.type != 'weapon' && item.quantity && item.quantity <= 0 || item.type != 'throwable' && item.durability  && item.durability <= 0) {
             res.status(400).json({error: "Knapp daneben ist auch vorbei! Munition aufgebraucht"});
             return;
         }
 
         const damage = item.damage || 10; // 10 for weapon without definition
 
+        if (item.type === 'throwable') {
+
         await players.updateOne(
             { _id: playerId, "inventory.id": itemId },
         {
             $inc: {
-                "inventory.$.quantity": -1,
-                "inventory.$.durability": -1
-            }
+                "inventory.$.quantity": -1,           
+    }
+    })}
+        if (item.type === 'weapon') {
+            await players.updateOne(
+                { _id: playerId, "inventory.id": itemId },
+                {
+                    $inc: {
+                        "inventory.$.durability": -1
+                    }
+                }
+
+            )
         }
-    );
+
         res.json({
-            message: "Du schiesst mit ${item.name}! Boom!",
-            action: "attack",
+            message: `Du schiesst mit ${item.name}! Boom!`,
+            action: "attacke",
             damage: damage,
-            feedback: "Dein Gegner ist getroffen! Sein Hp sinkt um ${item.damage} "             
+            feedback: `Dein Gegner ist getroffen! Sein Hp sinkt um ${item.damage}?`             
         });
         return;
     }
-        if (item.type === 'consumable') {
-            //if quantity 0
-            if (item.quantity && item.quantity <= 0) {
-        res.status(400).json({ error: "kein Kuttel für die Katzen! Die Flasche ist leer..." });
-        return;
-    }
-
-    const heal = item.heal_amount || 0;
-    
-    // update the quantity and the lifestate, after use
-    
+    if (item.type === `consumable`) {
+        //if quantity 0
+        if (item.quantity && item.quantity <= 0) {
+            res.status(400).json({ error: "kein Kuttel für die Katzen! Die Flasche ist leer..." });
+            return;
+        }
+        
+        const heal = item.heal_amount || 0;
+        
+        // update the quantity and the lifestate, after use
+        
     await players.updateOne(
         { _id: playerId, "inventory.id": itemId },
         {
@@ -164,6 +177,15 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
         }
     );
 
+      //special item
+    if (item.name === "pope_marjia") {
+            res.json ({
+                message: "Oh sh**! Here we go, again....Paaff! Paaff!!",
+                action: "get_stoned",
+                feedback: `Schau, dass es nicht zur Gewohneit wird! Deine Hp sinken um ${item.heal_amount}`
+            })
+        };
+
     res.json({ 
         message: `Aaaahhh, erfrischend! :P ${item.name} benutzt!`, 
         action: heal,
@@ -173,22 +195,13 @@ app.post('/player/:id/use', async (req: Request, res: Response) => {
 }
 
 // quest items
-if (item.type === 'quest_item') {
+if (item.type === "quest_item") {
     res.json({
-        message: "Du hast ${item.name} aus deinem Rücksack geholt.",
+        message: `Du hast ${item.name} aus deinem Rücksack geholt.`,
         action: "inspect and use",
-        info: "Benutze ${item.name} weise, könnte wichtig sein."
+        info: `Benutze ${item.name} weise, könnte wichtig sein.`
     });
     return;
 }
-//special item
-if (item.name === "pope_marjia") {
-    res.json ({
-        message: "Oh sh**! Here we go, again....Paaff! Paaff!!",
-        action: "get_stoned",
-        feedback: "Schau, dass es nicht zur Gewohneit wird! Deine Hp sinken um ${heal.amount}"
-    })
-};
-
-startServer();
 })
+startServer();
