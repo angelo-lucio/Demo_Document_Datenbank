@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
-import { MongoClient, Db } from 'mongodb'
+import { MongoClient, Db, IntegerType, Int32 } from 'mongodb'
+import { faker } from '@faker-js/faker';
+import { error } from 'node:console';
 
 const app = express();
 app.use(express.json());
@@ -36,6 +38,7 @@ interface Player {
 
 
 // start connection to MongoDB
+
 async function startServer() {          //async --> wait server start
     try {                               // try or catch --> log the connection error
         await client.connect();         //await --> wait database connection
@@ -120,9 +123,20 @@ app.post(`/player/:id/use`, async (req: Request, res: Response) => {
         res.status(400).json({ error: "Dieses Item kann nicht konsumiert werden." });
         return;
     } */
+
+    // check quantity and delete item if no more avaiable 
+   
     if (item.type === `weapon` || item.type === 'throwable') {
-        if (item.type != 'weapon' && item.quantity && item.quantity <= 0 || item.type != 'throwable' && item.durability  && item.durability <= 0) {
-            res.status(400).json({error: "Knapp daneben ist auch vorbei! Munition aufgebraucht"});
+        if (item.type == 'throwable' && ( item.quantity || 0) < 1 || item.type == 'weapon' && ( item.durability || 0) < 1) {
+            res.status(400).json({ info : `${item.name} nicht mehr verfügbar. Das war das letzte Stück!` })
+
+            await players.updateOne(
+                { _id: playerId },
+                {
+                    $pull: {
+                        inventory: {id: itemId}
+                    }
+                })
             return;
         }
 
@@ -136,6 +150,7 @@ app.post(`/player/:id/use`, async (req: Request, res: Response) => {
             $inc: {
                 "inventory.$.quantity": -1,           
     }
+
     })}
         if (item.type === 'weapon') {
             await players.updateOne(
@@ -145,6 +160,7 @@ app.post(`/player/:id/use`, async (req: Request, res: Response) => {
                         "inventory.$.durability": -1
                     }
                 }
+                
 
             )
         }
@@ -154,19 +170,18 @@ app.post(`/player/:id/use`, async (req: Request, res: Response) => {
             action: "attacke",
             damage: damage,
             feedback: `Dein Gegner ist getroffen! Sein Hp sinkt um ${item.damage}?`             
-        });
-        // delete items if no more avaiable
-        if (item.durability && item.durability <=0 || item.quantity && item.quantity <=0) {
-            await players.deleteOne(
-                { _id: playerId, "inventory.id": itemId }
-            )
-        }
-        return;
+        }); return;
     }
+
     if (item.type === `consumable`) {
         //if quantity 0
-        if (item.quantity && item.quantity <= 0) {
+        if (( item.quantity || 0) < 1) {
             res.status(400).json({ error: "kein Kuttel für die Katzen! Die Flasche ist leer..." });
+            return;
+        }
+
+        if (player.stats.hp >= player.stats.max_hp && ( item.heal_amount || 0 ) > 0 ) {
+            res.status(400).json({ error: "Deine Hp sind auf Maximum, kein Durst im Moment!"});
             return;
         }
         
@@ -216,7 +231,7 @@ app.delete('/player/:id/delete', async (req: Request, res: Response) => {
     const playerId = req.params.id;
     const { itemId } = req.body;  
 
-     const players = db.collection<Player>(`players`);
+    const players = db.collection<Player>(`players`);
 
     const player = await players.findOne({ _id: playerId, "inventory.id": itemId, });
     
@@ -228,9 +243,14 @@ app.delete('/player/:id/delete', async (req: Request, res: Response) => {
     // if term for items to use
     const item = player.inventory.find(i => i.id === itemId );
     if (!item) return;
-    await players.deleteOne(
-                { _id: playerId, "inventory.id": itemId }
-    )
+
+    await players.updateOne(
+                { _id: playerId },
+                {
+                    $pull: {
+                        inventory: {id: itemId}
+                    }
+                })
     res.json({
         message: `Du hast ${item.name} weggeworfen!`,
         action: "entsorgen",
@@ -241,7 +261,7 @@ app.delete('/player/:id/delete', async (req: Request, res: Response) => {
 
 app.put('/player/:id/add', async (req: Request, res: Response) => {
     const playerId = req.params.id;
-    const { newItem } = req.body;  
+    const newItem = req.body;  
 
     const players = db.collection<Player>(`players`);
 
